@@ -1,3 +1,14 @@
+---
+title: CodeReviewEnv
+emoji: "🧪"
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
+license: mit
+---
+
 # CodeReviewEnv
 
 CodeReviewEnv is an OpenEnv-style reinforcement learning environment for pull-request code review. Agents receive realistic PR metadata and diffs, then submit review actions containing a verdict, summary, inline comments, and identified bug IDs. Rewards are deterministic and come from a seeded per-task checklist, so evaluation is reproducible without an LLM judge.
