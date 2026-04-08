@@ -1,0 +1,136 @@
+# openenv.yaml — OpenEnv specification for CodeReviewEnv
+# -------------------------------------------------------
+# Spec version: 0.1
+# Environment: CodeReviewEnv
+# Domain: Software Engineering / Pull-Request Code Review
+
+name: CodeReviewEnv
+version: "0.1.0"
+description: >
+  A reinforcement-learning environment for pull-request code review.
+  An agent is presented with realistic PR diffs (metadata + file patches)
+  and must identify seeded bugs, assign severities, write inline comments,
+  and deliver an overall verdict (approve / request_changes / comment).
+  Rewards are computed deterministically from a per-task bug checklist.
+
+metadata:
+  authors: ["OpenEnv Community"]
+  license: MIT
+  tags: [code-review, software-engineering, nlp, llm, deterministic-reward]
+  paper: ~
+  website: ~
+
+observation_space:
+  type: structured
+  schema: codereviewenv.models.CodeReviewObservation
+  description: >
+    A Pydantic model containing PR metadata (title, description, author,
+    branches), a list of FileDiff objects (filename, language, unified-diff
+    patch, addition/deletion counts), multi-turn review history, and the
+    current step number.
+
+action_space:
+  type: structured
+  schema: codereviewenv.models.CodeReviewAction
+  description: >
+    A Pydantic model containing: verdict (approve | request_changes | comment),
+    a free-text summary, zero or more InlineComment objects keyed by filename
+    and line number, and a list of canonical bug IDs claimed to have been
+    found (used by the deterministic grader).
+
+reward:
+  type: scalar
+  range: [0.0, 1.0]
+  schema: codereviewenv.models.CodeReviewReward
+  description: >
+    Primary signal is `score` ∈ [0, 1].
+    Sub-scores: bug_detection_score (weighted coverage of seeded bugs),
+    verdict_correct (boolean), coverage_ratio (fraction of bugs found).
+    Full per-bug breakdown available in `checklist_results`.
+
+tasks:
+  - id: easy_list_utils
+    difficulty: easy
+    max_steps: 1
+    description: >
+      Small Python utility file with two obvious bugs: an off-by-one slice
+      and a missing zero-division guard.
+    bugs:
+      - off_by_one_slice          # weight 0.45
+      - missing_zero_division_guard  # weight 0.40
+      - misleading_test           # weight 0.15
+    expected_verdict: request_changes
+    seed: 1001
+
+  - id: medium_flask_api
+    difficulty: medium
+    max_steps: 2
+    description: >
+      Flask REST endpoint with SQL injection, sensitive data exposure,
+      missing authentication, and absent security tests.
+    bugs:
+      - sql_injection             # weight 0.35
+      - sensitive_data_exposure   # weight 0.20
+      - missing_authentication    # weight 0.25
+      - missing_security_tests    # weight 0.20
+    expected_verdict: request_changes
+    seed: 2002
+
+  - id: hard_async_pipeline
+    difficulty: hard
+    max_steps: 3
+    description: >
+      Async worker-pool pipeline with a memory leak, swallowed
+      CancelledError, race condition on a shared counter, broken stop
+      method, negative-counter corruption, type-coercion issue, and
+      insufficient tests.
+    bugs:
+      - unbounded_memory_leak           # weight 0.20
+      - swallowed_exception_cancellederror  # weight 0.20
+      - race_condition_counter          # weight 0.25
+      - broken_stop_method              # weight 0.10
+      - negative_counter_corruption     # weight 0.10
+      - type_coercion_report            # weight 0.05
+      - insufficient_async_tests        # weight 0.10
+    expected_verdict: request_changes
+    seed: 3003
+
+environment:
+  entry_point: codereviewenv.env:CodeReviewEnv
+  kwargs: {}          # override with {task_id: "..."} to select a task
+
+interfaces:
+  python:
+    install: pip install -e .
+    example: |
+      from codereviewenv import CodeReviewEnv, CodeReviewAction, ReviewVerdict
+      env = CodeReviewEnv(task_id="easy_list_utils")
+      obs = env.reset()
+      action = CodeReviewAction(
+          verdict=ReviewVerdict.REQUEST_CHANGES,
+          summary="Found off-by-one and missing zero-division guard.",
+          identified_bugs=["off_by_one_slice", "missing_zero_division_guard"],
+      )
+      obs, reward, done, info = env.step(action)
+      print(reward.score)
+
+  docker:
+    image: codereviewenv:latest
+    build: docker build -t codereviewenv .
+    run: docker run --rm -p 7860:7860 codereviewenv
+
+evaluation:
+  metrics:
+    - name: mean_score
+      description: Mean reward across all tasks / seeds
+    - name: coverage_ratio
+      description: Fraction of seeded bugs found per task
+    - name: verdict_accuracy
+      description: Fraction of episodes with correct final verdict
+  baseline:
+    script: inference.py
+    model: Qwen/Qwen2.5-72B-Instruct
+    description: >
+      Uses the OpenAI Chat Completions API to produce a structured
+      CodeReviewAction by prompting the model with the PR diff and
+      parsing its JSON response.

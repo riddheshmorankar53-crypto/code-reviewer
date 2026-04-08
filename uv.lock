@@ -1,0 +1,2 @@
+# Placeholder lockfile for OpenEnv validator compatibility.
+# Generate a full lockfile with `uv lock` before final submission if available.
