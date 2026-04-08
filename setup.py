@@ -10,7 +10,7 @@ setup(
     packages=find_packages(exclude=["tests*", "scripts*"]),
     install_requires=[
         "pydantic>=2.6,<3.0",
-        "openai>=1.30,<2.0",
+        "openai>=2.7.2,<3.0",
         "fastapi>=0.115,<1.0",
         "uvicorn>=0.30,<1.0",
     ],
